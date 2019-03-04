@@ -87,11 +87,22 @@ void printHex(const uint8_t * data, const uint32_t numBytes)
     @brief  Waits for incoming data and parses it
 */
 /**************************************************************************/
+uint16_t origtimeout, replyidx;
+
 uint8_t readPacket(Adafruit_BLE *ble, uint16_t timeout)
 {
-  uint16_t origtimeout = timeout, replyidx = 0;
-
+  origtimeout = timeout, replyidx = 0;
   memset(packetbuffer, 0, READ_BUFSIZE);
+
+  while (ble->available()) {
+    char c =  ble->read();
+    if (c == '!') {
+      replyidx = 0;
+    }
+    packetbuffer[replyidx] = c;
+    replyidx++;
+    timeout = origtimeout;
+  }
 
   while (timeout--) {
     if (replyidx >= 20) break;
@@ -112,18 +123,8 @@ uint8_t readPacket(Adafruit_BLE *ble, uint16_t timeout)
     if ((packetbuffer[1] == 'S') && (replyidx == PACKET_SEEKBAR_LEN))
       break;
 
-    while (ble->available()) {
-      char c =  ble->read();
-      if (c == '!') {
-        replyidx = 0;
-      }
-      packetbuffer[replyidx] = c;
-      replyidx++;
-      timeout = origtimeout;
-    }
-
     if (timeout == 0) break;
-    delay(1);
+    // delay(1);
   }
 
   packetbuffer[replyidx] = 0;  // null term

@@ -73,6 +73,9 @@ extern uint8_t packetbuffer[];
 // Plotted variables must be declared as globals
 double x;
 
+// Helper variable
+unsigned long now;
+
 // Define encoder variables
 float lsb=360.0/pow(2,14);
 uint16_t receivedVal16;
@@ -145,12 +148,17 @@ void setup() {
 
   Serial.println(F("******************************"));
 // -----------------------------------------------------------------------------
+
+// initialize helper variable
+now = millis();
 }
 
 void loop() {
 // -----------------------------------------------------------------------------
   /* Wait for new data to arrive */
+  Serial.println(millis()-now);
   uint8_t len = readPacket(&ble, BLE_READPACKET_TIMEOUT);
+  Serial.println(millis()-now);
   if (len != 0) {
     /* Got a packet! */
     // printHex(packetbuffer, len);
@@ -173,6 +181,7 @@ void loop() {
     Serial.print ("SeekBar "); Serial.println(progress);
     }
   }
+  Serial.println(millis()-now);
 //------------------------------------------------------------------------------
 
   // Perform SPI transaction
@@ -181,13 +190,17 @@ void loop() {
   receivedVal16 = SPI.transfer16(0xFFFF);
   digitalWrite(CS, HIGH);
   SPI.endTransaction();
+  Serial.println(millis()-now);
 
   // Convert counts to degrees and assign to plot variable
   x = int (receivedVal16 & 0x3FFF) * lsb;
 
   // Print value to screen
-  Serial.println(x,HEX);
+  Serial.println(x);
 
   // Wait before next loop
-  delay(100);
+  while (millis()-now < 20);
+
+  Serial.println(millis()-now);
+  now = millis();
 }

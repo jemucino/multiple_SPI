@@ -9,6 +9,10 @@
 
 #include "BluefruitConfig.h"
 
+#include <digitalWriteFast.h>  // library for high performance reads and writes by jrraines
+                               // see http://www.arduino.cc/cgi-bin/yabb2/YaBB.pl?num=1267553811/0
+                               // and http://code.google.com/p/digitalwritefast/
+
 #if SOFTWARE_SERIAL_AVAILABLE
   #include <SoftwareSerial.h>
 #endif
@@ -68,22 +72,38 @@ void printHex(const uint8_t * data, const uint32_t numBytes);
 extern uint8_t packetbuffer[];
 // -----------------------------------------------------------------------------
 
-#define CS A3
+#define ENCODER_SPI_CS 5
 
-// Plotted variables must be declared as globals
-double x;
+// Encoder declarations for ABI interface
+#define c_EncoderPinA A3
+#define c_EncoderPinB A4
+#define c_EncoderPinI 3 // PD0 -> INT0
+#define EncoderIsReversed false
+bool _EncoderASet;
+bool _EncoderBSet;
+volatile long _EncoderTicks = 0;
 
 // Helper variable
 unsigned long now;
 
 // Define encoder variables
-float lsb=360.0/pow(2,14);
 uint16_t receivedVal16;
+int raw_angle;
+float measured_angle;
+float lsb=360.0/pow(2,14);
+
+// Function declarations
+void handle_encoder_rollover();
 
 void setup() {
+  // Initialize encoder
+  pinMode(c_EncoderPinA, INPUT_PULLUP);      // sets pin A as input
+  pinMode(c_EncoderPinB, INPUT_PULLUP);      // sets pin B as input
+  attachInterrupt(0, handle_encoder_rollover, FALLING);
+
   // Setup SPI communications with AS5047D
-  pinMode(CS, OUTPUT);
-  digitalWrite(CS, HIGH); // Disconnect AS5047D from SPI bus
+  pinMode(ENCODER_SPI_CS, OUTPUT);
+  digitalWrite(ENCODER_SPI_CS, HIGH); // Disconnect AS5047D from SPI bus
   // SPI.begin();
 
 // -----------------------------------------------------------------------------
@@ -156,9 +176,9 @@ now = millis();
 void loop() {
 // -----------------------------------------------------------------------------
   /* Wait for new data to arrive */
-  Serial.println(millis()-now);
+  // Serial.println(millis()-now);
   uint8_t len = readPacket(&ble, BLE_READPACKET_TIMEOUT);
-  Serial.println(millis()-now);
+  // Serial.println(millis()-now);
   if (len != 0) {
     /* Got a packet! */
     // printHex(packetbuffer, len);
@@ -181,26 +201,42 @@ void loop() {
     Serial.print ("SeekBar "); Serial.println(progress);
     }
   }
-  Serial.println(millis()-now);
+  // Serial.println(millis()-now);
 //------------------------------------------------------------------------------
 
   // Perform SPI transaction
   SPI.beginTransaction(SPISettings(10000000, MSBFIRST, SPI_MODE1));
-  digitalWrite(CS, LOW);
+  digitalWrite(ENCODER_SPI_CS, LOW);
   receivedVal16 = SPI.transfer16(0xFFFF);
-  digitalWrite(CS, HIGH);
+  digitalWrite(ENCODER_SPI_CS, HIGH);
   SPI.endTransaction();
-  Serial.println(millis()-now);
+  // Serial.println(millis()-now);
 
-  // Convert counts to degrees and assign to plot variable
-  x = int (receivedVal16 & 0x3FFF) * lsb;
+  // Convert counts to degrees
+  raw_angle = int (receivedVal16 & 0x3FFF);
+  measured_angle = (_EncoderTicks*360.0 + raw_angle*lsb)/32.0;
 
   // Print value to screen
-  Serial.println(x);
+  Serial.println(measured_angle);
 
   // Wait before next loop
   while (millis()-now < 20);
 
   Serial.println(millis()-now);
   now = millis();
+}
+
+// Interrupt service routines for the encoder
+void handle_encoder_rollover()
+{
+  // Test transition; since the interrupt will only fire on 'rising' we don't need to read pin A
+  _EncoderASet = digitalReadFast(c_EncoderPinA);   // read the input pin
+  _EncoderBSet = digitalReadFast(c_EncoderPinB);   // read the input pin
+
+  // and adjust counter + if A leads B
+  #ifdef EncoderIsReversed
+    _EncoderTicks -= _EncoderASet > _EncoderBSet ? -1 : +1;
+  #else
+    _EncoderTicks += _EncoderASet > _EncoderBSet ? -1 : +1;
+  #endif
 }

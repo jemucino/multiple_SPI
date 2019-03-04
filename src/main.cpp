@@ -79,8 +79,6 @@ extern uint8_t packetbuffer[];
 #define c_EncoderPinB A4
 #define c_EncoderPinI 3 // PD0 -> INT0
 #define EncoderIsReversed false
-bool _EncoderASet;
-bool _EncoderBSet;
 volatile long _EncoderTicks = 0;
 
 // Helper variable
@@ -229,14 +227,10 @@ void loop() {
 // Interrupt service routines for the encoder
 void handle_encoder_rollover()
 {
-  // Test transition; since the interrupt will only fire on 'rising' we don't need to read pin A
-  _EncoderASet = digitalReadFast(c_EncoderPinA);   // read the input pin
-  _EncoderBSet = digitalReadFast(c_EncoderPinB);   // read the input pin
-
-  // and adjust counter + if A leads B
+  // Increment or decrement rollover counter
   #ifdef EncoderIsReversed
-    _EncoderTicks -= _EncoderASet > _EncoderBSet ? -1 : +1;
+    _EncoderTicks -= digitalReadFast(c_EncoderPinA) > digitalReadFast(c_EncoderPinB) ? -1 : +1;
   #else
-    _EncoderTicks += _EncoderASet > _EncoderBSet ? -1 : +1;
+    _EncoderTicks += digitalReadFast(c_EncoderPinA) > digitalReadFast(c_EncoderPinB) ? -1 : +1;
   #endif
 }
